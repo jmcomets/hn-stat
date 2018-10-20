@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <algorithm>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
@@ -16,13 +17,9 @@ void onLines(std::istream& stream, F f)
     }
 }
 
-typedef long long Timestamp;
-
 template <typename F>
 void onValidLines(std::istream& stream, F f)
 {
-    std::istringstream timestamp_input;
-    std::string query;
     onLines(stream, [&](const std::string& line) {
         std::size_t tabPos = line.find('\t');
         if (tabPos == std::string::npos) {
@@ -36,15 +33,11 @@ void onValidLines(std::istream& stream, F f)
             return;
         }
 
-        std::string timestamp_str = line.substr(0, tabPos); // string copy
+        std::string timestamp = line.substr(0, tabPos); // string copy
         std::string query = line.substr(tabPos+1); // string copy
-        timestamp_input.str(timestamp_str); // string copy
-        timestamp_input.clear();
 
-        Timestamp timestamp = -1;
-        timestamp_input >> timestamp;
-        if (!timestamp_input || timestamp < 0) {
-            std::cerr << "invalid line: \"" << timestamp_str << "\" is not a valid timestamp" << std::endl;
+        if (std::any_of(timestamp.begin(), timestamp.end(), [](char c) { return c < '0' || c > '9'; })) {
+            std::cerr << "invalid line: \"" << timestamp << "\" is not a valid timestamp" << std::endl;
             return;
         }
 
@@ -53,28 +46,28 @@ void onValidLines(std::istream& stream, F f)
 }
 
 template <typename F>
-void onTimestampRange(std::istream& stream, Timestamp start_timestamp, Timestamp end_timestamp, F f)
+void onTimestampRange(std::istream& stream, std::string_view start_timestamp, std::string_view end_timestamp, F f)
 {
-    onValidLines(stream, [&](Timestamp timestamp, const std::string& query) {
+    onValidLines(stream, [&](const std::string& timestamp, const std::string& query) {
         if (timestamp < start_timestamp || end_timestamp < timestamp)
             return;
         f(query);
     });
 }
 
-typedef std::size_t Count;
-
 int main()
 {
+    typedef std::size_t Count;
+
     Count n = 10;
-    Timestamp start_timestamp = 0;
-    Timestamp end_timestamp = std::numeric_limits<Timestamp>::max();
+    std::string start_timestamp = "0";
+    std::string end_timestamp(1, '9' + 1);
 
     if (n == 0)
         return EXIT_SUCCESS;
 
     std::unordered_map<std::string, Count> occurences;
-    std::multimap<Count, std::string_view, std::greater<Count>> maxOccurences;
+    std::multimap<Count, std::string_view> maxOccurences;
 
     std::ifstream file("hn_logs.tsv");
     onTimestampRange(file, start_timestamp, end_timestamp, [&](const std::string& q) {
@@ -82,7 +75,7 @@ int main()
         std::string_view query = insertIt->first;
         Count count = ++insertIt->second;
 
-        // search for an existing entry for this query in `maxOccurences`
+        // erase an existing entry for this query in `maxOccurences`
         for (auto range = maxOccurences.equal_range(count-1); range.first != range.second; ++range.first) {
             if (range.first->second == query) {
                 maxOccurences.erase(range.first);
@@ -91,7 +84,7 @@ int main()
         }
 
         if (maxOccurences.size() == n) {
-            auto smallestCount = maxOccurences.rbegin()->first;
+            Count smallestCount = maxOccurences.begin()->first;
             if (count > smallestCount) {
                 maxOccurences.emplace(count, query);
 
@@ -103,8 +96,8 @@ int main()
         }
     });
 
-    for (const std::pair<Count, std::string_view>& maxOccuring : maxOccurences) {
-        std::cout << maxOccuring.second << ' ' << maxOccuring.first << '\n';
+    for (auto it = maxOccurences.rbegin(), itEnd = maxOccurences.rend(); it != itEnd; ++it) {
+        std::cout << it->second << ' ' << it->first << '\n';
     }
     std::cout.flush();
 
