@@ -22,10 +22,14 @@ void onLines(std::istream& stream, F f)
     }
 }
 
+
 class Timestamp
 {
-    Timestamp(std::string ts):
-        ts_(std::move(ts)),
+    // use string views since we don't need to keep timestamps
+    typedef std::string_view Str;
+
+    Timestamp(Str&& ts):
+        ts_(ts),
         is_inf_(false)
     {
     }
@@ -43,7 +47,7 @@ public:
     static const Timestamp Min;
     static const Timestamp Max;
 
-    static std::optional<Timestamp> parse(std::string_view ts)
+    static std::optional<Timestamp> parse(const Str& ts)
     {
         if (ts.empty())
             return {};
@@ -53,11 +57,11 @@ public:
             return {};
 
         // skip leading zeros
-        std::string::size_type i = ts.find_first_not_of('0');
-        if (i == std::string::npos)
+        auto i = ts.find_first_not_of('0');
+        if (i == -1)
             i = ts.size() - 1;
 
-        return Timestamp(std::string(ts.substr(i)));
+        return Timestamp(ts.substr(i));
     }
 
     bool operator<(const Timestamp& other) const
@@ -78,7 +82,7 @@ public:
     { return other < *this; }
 
 private:
-    std::string ts_;
+    Str ts_;
     bool is_inf_;
 };
 
@@ -98,7 +102,7 @@ std::ostream& operator<<(std::ostream& output, const Timestamp& timestamp)
 template <typename F>
 void onValidLines(std::istream& stream, F f)
 {
-    onLines(stream, [&](const std::string& line) {
+    onLines(stream, [&](std::string_view line) {
         std::size_t tabPos = line.find('\t');
         if (tabPos == std::string::npos) {
             std::cerr << "invalid line: less than 2 columns" << std::endl;
@@ -111,7 +115,7 @@ void onValidLines(std::istream& stream, F f)
             return;
         }
 
-        std::string timestamp_str = line.substr(0, tabPos); // string copy
+        std::string_view timestamp_str = line.substr(0, tabPos);
         auto timestamp = Timestamp::parse(timestamp_str);
 
         if (!timestamp) {
@@ -119,7 +123,7 @@ void onValidLines(std::istream& stream, F f)
             return;
         }
 
-        std::string query = line.substr(tabPos+1); // string copy
+        std::string_view query = line.substr(tabPos+1);
 
         f(*timestamp, query);
     });
@@ -128,7 +132,7 @@ void onValidLines(std::istream& stream, F f)
 template <typename F>
 void onTimestampRange(std::istream& stream, const Timestamp& start_timestamp, const Timestamp& end_timestamp, F f)
 {
-    onValidLines(stream, [&](const Timestamp& timestamp, const std::string& query) {
+    onValidLines(stream, [&](const Timestamp& timestamp, std::string_view query) {
         if (timestamp < start_timestamp || end_timestamp < timestamp)
             return;
         f(query);
@@ -145,8 +149,8 @@ void printTopN(std::istream& input, std::ostream& output, Timestamp start_timest
     std::unordered_map<std::string, Count> occurences;
     std::multimap<Count, std::string_view> maxOccurences;
 
-    onTimestampRange(input, start_timestamp, end_timestamp, [&](const std::string& q) {
-        auto insertIt = occurences.emplace(q, 0).first; // string copy
+    onTimestampRange(input, start_timestamp, end_timestamp, [&](std::string_view q) {
+        auto insertIt = occurences.emplace(q, 0).first;
         std::string_view query = insertIt->first;
         Count count = ++insertIt->second;
 
@@ -181,7 +185,7 @@ void printDistinctCount(std::istream& input, std::ostream& output, Timestamp sta
 {
     std::unordered_set<std::string> queries;
     onTimestampRange(input, start_timestamp, end_timestamp,
-                     [&](const std::string& q) { queries.emplace(q); });
+                     [&](std::string_view q) { queries.emplace(q); });
 
     output << queries.size() << std::endl;
 }
