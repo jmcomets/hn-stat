@@ -94,16 +94,17 @@ int main(int argc, char* argv[])
     std::optional<Timestamp> start_timestamp = Timestamp::Min;
     std::optional<Timestamp> end_timestamp = Timestamp::Max;
 
-    int option_index = 0;
+
+    const char* optstring = "h";
 
     option long_options[] = {
         { "from", required_argument,  NULL, 'f' },
         { "to",   required_argument,  NULL, 't' },
+        { "help", no_argument,        NULL, 'h' },
         { 0, 0, 0, 0}
     };
 
-    const char* optstring = "f:t:";
-
+    int option_index = 0;
     int c = -1;
     while (true) {
         c = getopt_long(argc, argv, optstring, long_options, &option_index);
@@ -111,6 +112,12 @@ int main(int argc, char* argv[])
             break;
 
         switch (c) {
+            case 'h':
+            {
+                printUsage(std::cout);
+                return EXIT_SUCCESS;
+            }
+
             case 'f':
             {
                 start_timestamp = Timestamp::parse(optarg);
