@@ -89,7 +89,6 @@ void printUsage(std::ostream& output)
         << std::endl;
 }
 
-
 int main(int argc, char* argv[])
 {
     std::optional<Timestamp> start_timestamp = Timestamp::Min;
@@ -150,9 +149,14 @@ int main(int argc, char* argv[])
         }
 
         std::string count_str = argv[optind++];
-        unsigned int n;
+        int n;
         try {
-            n = std::stoull(count_str); // TODO actually check this f**king integer
+            n = std::stoi(count_str);
+            if (n < 0)
+            {
+                std::cerr << argv[0] << ": " << "expected a positive integer, got " << n << std::endl;
+                return EXIT_FAILURE;
+            }
         } catch (std::invalid_argument) {
             std::cerr << argv[0] << ": " << quote(count_str) << " is not an integer" << std::endl;
             return EXIT_FAILURE;
