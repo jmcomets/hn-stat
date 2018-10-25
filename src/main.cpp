@@ -1,4 +1,5 @@
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -9,44 +10,37 @@
 
 #include "ranker.h"
 #include "timestamp.h"
+#include "tsv_reader.h"
 
-template <typename F>
-void onLines(std::istream& stream, F f)
+std::string quote(std::string_view str)
 {
-    std::string line;
-    while (std::getline(stream, line)) {
-        f(line);
-    }
+    std::ostringstream stream;
+    stream << "\"" << str << "\"";
+    return stream.str();
 }
 
 template <typename F>
 void onValidLines(std::istream& stream, F f)
 {
-    onLines(stream, [&](std::string_view line) {
-        std::size_t tabPos = line.find('\t');
-        if (tabPos == std::string::npos) {
-            std::cerr << "invalid line: less than 2 columns" << std::endl;
-            return;
+    TsvReader reader(stream);
+    while (auto row = reader.readNextRow()) {
+        const std::vector<std::string_view>& cells = *row;
+        if (cells.size() != 2) {
+            std::cerr << "invalid line: expected 2 columns" << std::endl;
+            continue;
         }
 
-        std::size_t nextTabPos = line.find('\t', tabPos+1);
-        if (nextTabPos != std::string::npos) {
-            std::cerr << "invalid line: more than 2 columns" << std::endl;
-            return;
-        }
+        std::string_view timestamp_str = cells[0];
+        std::string_view query = cells[1];
 
-        std::string_view timestamp_str = line.substr(0, tabPos);
         auto timestamp = Timestamp::parse(timestamp_str);
-
         if (!timestamp) {
-            std::cerr << "invalid line: \"" << timestamp_str << "\" is not a valid timestamp" << std::endl;
-            return;
+            std::cerr << "invalid line: " << quote(timestamp_str) << " is not a valid timestamp" << std::endl;
+            continue;
         }
-
-        std::string_view query = line.substr(tabPos+1);
 
         f(*timestamp, query);
-    });
+    }
 }
 
 template <typename F>
@@ -94,6 +88,7 @@ void printUsage(std::ostream& output)
         << "\n\thnStat distinct [--from TIMESTAMP] [--to TIMESTAMP] input_file"
         << std::endl;
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -159,10 +154,10 @@ int main(int argc, char* argv[])
         try {
             n = std::stoull(count_str); // TODO actually check this f**king integer
         } catch (std::invalid_argument) {
-            std::cerr << argv[0] << ": " << "\"" << count_str << "\" is not an integer" << std::endl;
+            std::cerr << argv[0] << ": " << quote(count_str) << " is not an integer" << std::endl;
             return EXIT_FAILURE;
         } catch (std::out_of_range) {
-            std::cerr << argv[0] << ": " << "\"" << count_str << "\" is too large" << std::endl;
+            std::cerr << argv[0] << ": " << quote(count_str) << " is too large" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -175,7 +170,7 @@ int main(int argc, char* argv[])
 
         std::ifstream file(filename);
         if (!file) {
-            std::cerr << argv[0] << ": file " << "\"" << filename << "\"" << " not readable" << std::endl;
+            std::cerr << argv[0] << ": file " << quote(filename) << " not readable" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -190,13 +185,13 @@ int main(int argc, char* argv[])
 
         std::ifstream file(filename);
         if (!file) {
-            std::cerr << argv[0] << ": file " << "\"" << filename << "\"" << " not readable" << std::endl;
+            std::cerr << argv[0] << ": file " << quote(filename) << " not readable" << std::endl;
             return EXIT_FAILURE;
         }
 
         printDistinctCount(file, std::cout, *start_timestamp, *end_timestamp);
     } else {
-        std::cerr << argv[0] << ": unrecognized command \"" << command << "\"" << std::endl;
+        std::cerr << argv[0] << ": unrecognized command " << quote(command) << std::endl;
         return EXIT_FAILURE;
     }
 
