@@ -1,17 +1,14 @@
-#include <algorithm>
-#include <ctime>
 #include <fstream>
 #include <iostream>
-#include <limits>
-#include <map>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 
 #include <getopt.h>
+
+#include "ranker.h"
+#include "timestamp.h"
 
 template <typename F>
 void onLines(std::istream& stream, F f)
@@ -20,83 +17,6 @@ void onLines(std::istream& stream, F f)
     while (std::getline(stream, line)) {
         f(line);
     }
-}
-
-
-class Timestamp
-{
-    // use string views since we don't need to keep timestamps
-    typedef std::string_view Str;
-
-    Timestamp(Str&& ts):
-        ts_(ts),
-        is_inf_(false)
-    {
-    }
-
-    struct Infinity {};
-
-    Timestamp(Infinity):
-        is_inf_(true)
-    {
-    }
-
-    friend std::ostream& operator<<(std::ostream&, const Timestamp&);
-
-public:
-    static const Timestamp Min;
-    static const Timestamp Max;
-
-    static std::optional<Timestamp> parse(const Str& ts)
-    {
-        if (ts.empty())
-            return {};
-
-        // only accept digits, since a timestamp is a positive integer
-        if (std::any_of(ts.begin(), ts.end(), [](char c) { return c < '0' || c > '9'; }))
-            return {};
-
-        // skip leading zeros
-        auto i = ts.find_first_not_of('0');
-        if (i == -1)
-            i = ts.size() - 1;
-
-        return Timestamp(ts.substr(i));
-    }
-
-    bool operator<(const Timestamp& other) const
-    {
-        // infinity => bool ordering (false < true)
-        if (is_inf_ != other.is_inf_)
-            return is_inf_ < other.is_inf_;
-
-        // smaller timestamp strings => smaller timestamps
-        if (ts_.size() != other.ts_.size())
-            return ts_.size() < other.ts_.size();
-
-        // same string size => lexicographical order
-        return ts_ < other.ts_;
-    }
-
-    bool operator>(const Timestamp& other) const
-    { return other < *this; }
-
-private:
-    Str ts_;
-    bool is_inf_;
-};
-
-const Timestamp Timestamp::Min("0");
-const Timestamp Timestamp::Max(Timestamp::Infinity {});
-
-std::ostream& operator<<(std::ostream& output, const Timestamp& timestamp)
-{
-    if (timestamp.is_inf_) {
-        output << "infinity";
-    } else {
-        output << timestamp.ts_;
-    }
-    return output;
 }
 
 template <typename F>
@@ -139,45 +59,22 @@ void onTimestampRange(std::istream& stream, const Timestamp& start_timestamp, co
     });
 }
 
-typedef std::size_t Count;
-
-void printTopN(std::istream& input, std::ostream& output, Timestamp start_timestamp, Timestamp end_timestamp, Count n)
+void printTopN(std::istream& input, std::ostream& output, Timestamp start_timestamp, Timestamp end_timestamp, unsigned int n)
 {
     if (n == 0)
         return;
 
-    std::unordered_map<std::string, Count> occurences;
-    std::multimap<Count, std::string_view> maxOccurences;
+    MaxOccurrenceRanker<std::string, std::string_view> ranker(n);
 
-    onTimestampRange(input, start_timestamp, end_timestamp, [&](std::string_view q) {
-        auto insertIt = occurences.emplace(q, 0).first;
-        std::string_view query = insertIt->first;
-        Count count = ++insertIt->second;
-
-        // erase an existing entry for this query in `maxOccurences`
-        for (auto range = maxOccurences.equal_range(count-1); range.first != range.second; ++range.first) {
-            if (range.first->second == query) {
-                maxOccurences.erase(range.first);
-                break;
-            }
-        }
-
-        if (maxOccurences.size() == n) {
-            Count smallestCount = maxOccurences.begin()->first;
-            if (count > smallestCount) {
-                maxOccurences.emplace(count, query);
-
-                // only keep the n max occurences
-                maxOccurences.erase(smallestCount);
-            }
-        } else {
-            maxOccurences.emplace(count, query);
-        }
+    // rank queries in the given timestamp range
+    onTimestampRange(input, start_timestamp, end_timestamp, [&ranker](std::string_view query) {
+        ranker.update(query);
     });
 
-    for (auto it = maxOccurences.rbegin(), itEnd = maxOccurences.rend(); it != itEnd; ++it) {
-        output << it->second << ' ' << it->first << '\n';
-    }
+    // print out the top n elements
+    ranker.visit([&output](std::string_view query, unsigned int count) {
+        output << query << ' ' << count << '\n';
+    });
     output.flush();
 }
 
@@ -258,7 +155,7 @@ int main(int argc, char* argv[])
         }
 
         std::string count_str = argv[optind++];
-        Count n;
+        unsigned int n;
         try {
             n = std::stoull(count_str); // TODO actually check this f**king integer
         } catch (std::invalid_argument) {
