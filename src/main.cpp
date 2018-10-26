@@ -23,15 +23,15 @@ template <typename F>
 void onValidLines(std::istream& stream, F f)
 {
     TSVReader reader(stream);
-    while (auto row = reader.readNextRow()) {
-        const std::vector<std::string_view>& cells = *row;
-        if (cells.size() != 2) {
+    std::vector<std::string_view> row;
+    while (reader.readNextRow(row)) {
+        if (row.size() != 2) {
             std::cerr << "invalid line: expected 2 columns" << std::endl;
             continue;
         }
 
-        std::string_view timestamp_str = cells[0];
-        std::string_view query = cells[1];
+        std::string_view timestamp_str = row[0];
+        std::string_view query = row[1];
 
         auto timestamp = Timestamp::parse(timestamp_str);
         if (!timestamp) {

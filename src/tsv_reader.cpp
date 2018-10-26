@@ -5,13 +5,13 @@ TSVReader::TSVReader(std::istream& input):
 {
 }
 
-std::optional<std::vector<std::string_view>> TSVReader::readNextRow()
+bool TSVReader::readNextRow(std::vector<std::string_view>& row)
 {
     if (!input_ || !std::getline(input_, line_))
-        return {};
+        return false;
 
+    row.clear();
     std::string_view line_view(line_);
-    std::vector<std::string_view> row;
 
     std::size_t pos = 0;
     do {
@@ -20,5 +20,5 @@ std::optional<std::vector<std::string_view>> TSVReader::readNextRow()
         pos = tabPos + 1;
     } while (pos != 0); // npos + 1
 
-    return row;
+    return true;
 }
