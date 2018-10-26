@@ -91,9 +91,8 @@ void printUsage(std::ostream& output)
 
 int main(int argc, char* argv[])
 {
-    std::optional<Timestamp> start_timestamp = Timestamp::Min;
-    std::optional<Timestamp> end_timestamp = Timestamp::Max;
-
+    Timestamp start_timestamp = Timestamp::Min;
+    Timestamp end_timestamp = Timestamp::Max;
 
     const char* optstring = "h";
 
@@ -120,21 +119,23 @@ int main(int argc, char* argv[])
 
             case 'f':
             {
-                start_timestamp = Timestamp::parse(optarg);
-                if (!start_timestamp) {
+                auto timestamp = Timestamp::parse(optarg);
+                if (!timestamp) {
                     std::cerr << argv[0] << ": " << "--from received an invalid timestamp" << std::endl;
                     return EXIT_FAILURE;
                 }
+                start_timestamp = *timestamp;
                 break;
             }
 
             case 't':
             {
-                end_timestamp = Timestamp::parse(optarg);
-                if (!end_timestamp) {
+                auto timestamp = Timestamp::parse(optarg);
+                if (!timestamp) {
                     std::cerr << argv[0] << ": " << "--to received an invalid timestamp" << std::endl;
                     return EXIT_FAILURE;
                 }
+                end_timestamp = *timestamp;
                 break;
             }
 
@@ -144,14 +145,14 @@ int main(int argc, char* argv[])
     }
 
     if (optind >= argc) {
-        std::cerr << argv[0] << ": " << "missing command" << std::endl;
+        std::cerr << argv[0] << ": " << "no command specified (view usage with -h/--help)" << std::endl;
         return EXIT_FAILURE;
     }
 
     std::string command = argv[optind++];
     if (command == "top") {
         if (optind >= argc) {
-            std::cerr << argv[0] << ": " << "missing count" << std::endl;
+            std::cerr << argv[0] << ": " << "no maximum number of elements given" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -173,7 +174,7 @@ int main(int argc, char* argv[])
         }
 
         if (optind >= argc) {
-            std::cerr << argv[0] << ": " << "missing filename" << std::endl;
+            std::cerr << argv[0] << ": " << "no filename given" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -185,10 +186,10 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        printTopN(file, std::cout, *start_timestamp, *end_timestamp, n);
+        printTopN(file, std::cout, start_timestamp, end_timestamp, n);
     } else if (command == "distinct") {
         if (optind >= argc) {
-            std::cerr << argv[0] << ": " << "missing filename" << std::endl;
+            std::cerr << argv[0] << ": " << "no filename given" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -200,7 +201,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        printDistinctCount(file, std::cout, *start_timestamp, *end_timestamp);
+        printDistinctCount(file, std::cout, start_timestamp, end_timestamp);
     } else {
         std::cerr << argv[0] << ": unrecognized command " << quote(command) << std::endl;
         return EXIT_FAILURE;
