@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-class TsvReader
+class TSVReader
 {
 public:
-    TsvReader(std::istream& input);
+    TSVReader(std::istream& input);
 
     std::optional<std::vector<std::string_view>> readNextRow();
 

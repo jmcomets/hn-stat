@@ -22,7 +22,7 @@ std::string quote(std::string_view str)
 template <typename F>
 void onValidLines(std::istream& stream, F f)
 {
-    TsvReader reader(stream);
+    TSVReader reader(stream);
     while (auto row = reader.readNextRow()) {
         const std::vector<std::string_view>& cells = *row;
         if (cells.size() != 2) {

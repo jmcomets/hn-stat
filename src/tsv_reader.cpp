@@ -1,11 +1,11 @@
 #include "tsv_reader.h"
 
-TsvReader::TsvReader(std::istream& input):
+TSVReader::TSVReader(std::istream& input):
     input_(input)
 {
 }
 
-std::optional<std::vector<std::string_view>> TsvReader::readNextRow()
+std::optional<std::vector<std::string_view>> TSVReader::readNextRow()
 {
     if (!input_ || !std::getline(input_, line_))
         return {};
