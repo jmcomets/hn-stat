@@ -1,6 +1,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,6 +9,7 @@
 
 #include <getopt.h>
 
+#include "options.h"
 #include "ranker.h"
 #include "timestamp.h"
 #include "tsv_reader.h"
@@ -81,132 +83,123 @@ void printDistinctCount(std::istream& input, std::ostream& output, Timestamp sta
     output << queries.size() << std::endl;
 }
 
-void printUsage(std::ostream& output)
+void printUsage(std::ostream& output, const Options& options)
 {
-    output << "usage: "
+    output << "Usage: "
         << "\n\thnStat top nb_top_queries [--from TIMESTAMP] [--to TIMESTAMP] input_file"
         << "\n\thnStat distinct [--from TIMESTAMP] [--to TIMESTAMP] input_file"
+        << "\n\n" << options.help()
         << std::endl;
 }
 
 int main(int argc, char* argv[])
 {
-    Timestamp start_timestamp = Timestamp::Min;
-    Timestamp end_timestamp = Timestamp::Max;
+    auto options = Options({
+            Option('h', "help", "Display this help"),
+            LongOption("from", ArgumentRequired, "Minimum (inclusive) timestamp to consider. Defaults to all timestamps"),
+            LongOption("to", ArgumentRequired, "Maximum (inclusive) timestamp to consider. Default to all timestamps.")
+            });
 
-    const char* optstring = "h";
+    Parser parser(options);
+    auto arguments = parser.parse(argc, argv);
+    if (!arguments)
+        return EXIT_FAILURE;
 
-    option long_options[] = {
-        { "from", required_argument,  NULL, 'f' },
-        { "to",   required_argument,  NULL, 't' },
-        { "help", no_argument,        NULL, 'h' },
-        { 0, 0, 0, 0}
-    };
-
-    int option_index = 0;
-    int c = -1;
-    while (true) {
-        c = getopt_long(argc, argv, optstring, long_options, &option_index);
-        if (c == -1)
-            break;
-
-        switch (c) {
-            case 'h':
-            {
-                printUsage(std::cout);
-                return EXIT_SUCCESS;
-            }
-
-            case 'f':
-            {
-                auto timestamp = Timestamp::parse(optarg);
-                if (!timestamp) {
-                    std::cerr << argv[0] << ": " << "--from received an invalid timestamp" << std::endl;
-                    return EXIT_FAILURE;
-                }
-                start_timestamp = *timestamp;
-                break;
-            }
-
-            case 't':
-            {
-                auto timestamp = Timestamp::parse(optarg);
-                if (!timestamp) {
-                    std::cerr << argv[0] << ": " << "--to received an invalid timestamp" << std::endl;
-                    return EXIT_FAILURE;
-                }
-                end_timestamp = *timestamp;
-                break;
-            }
-
-            default:
-                return EXIT_FAILURE;
-        }
+    if (arguments->hasOption("help")) {
+        printUsage(std::cout, options);
+        return EXIT_SUCCESS;
     }
 
-    if (optind >= argc) {
+    Timestamp start_timestamp = Timestamp::Min;
+    if (auto timstamp_str = arguments->getOption("from")) {
+        auto timestamp = Timestamp::parse(*timstamp_str);
+        if (!timestamp) {
+            std::cerr << argv[0] << ": " << "--from received an invalid timestamp" << std::endl;
+            return EXIT_FAILURE;
+        }
+        start_timestamp = *timestamp;
+    }
+
+    Timestamp end_timestamp = Timestamp::Max;
+    if (auto timstamp_str = arguments->getOption("to")) {
+        auto timestamp = Timestamp::parse(*timstamp_str);
+        if (!timestamp) {
+            std::cerr << argv[0] << ": " << "--to received an invalid timestamp" << std::endl;
+            return EXIT_FAILURE;
+        }
+        end_timestamp = *timestamp;
+    }
+
+    if (end_timestamp < start_timestamp) {
+        std::cerr << argv[0] << ": " << "--from cannot receive a larger timestamp than the one specified with --to" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    auto positionalArguments = arguments->getPositional();
+
+    auto command = positionalArguments.next();
+    if (!command) {
         std::cerr << argv[0] << ": " << "no command specified (view usage with -h/--help)" << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::string command = argv[optind++];
-    if (command == "top") {
-        if (optind >= argc) {
+    static const std::string PrintTopNCommand = "top";
+    static const std::string PrintDistinctCommand = "distinct";
+
+    if (command == PrintTopNCommand) {
+        auto count_str = positionalArguments.next();
+        if (!count_str) {
             std::cerr << argv[0] << ": " << "no maximum number of elements given" << std::endl;
             return EXIT_FAILURE;
         }
 
-        std::string count_str = argv[optind++];
         int n;
         try {
-            n = std::stoi(count_str);
+            n = std::stoi(*count_str);
             if (n < 0)
             {
                 std::cerr << argv[0] << ": " << "expected a positive integer, got " << n << std::endl;
                 return EXIT_FAILURE;
             }
         } catch (std::invalid_argument) {
-            std::cerr << argv[0] << ": " << quote(count_str) << " is not an integer" << std::endl;
+            std::cerr << argv[0] << ": " << std::quoted(*count_str) << " is not an integer" << std::endl;
             return EXIT_FAILURE;
         } catch (std::out_of_range) {
-            std::cerr << argv[0] << ": " << quote(count_str) << " is too large" << std::endl;
+            std::cerr << argv[0] << ": " << std::quoted(*count_str) << " is too large" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (optind >= argc) {
+        auto filename = positionalArguments.next();
+        if (!filename) {
             std::cerr << argv[0] << ": " << "no filename given" << std::endl;
             return EXIT_FAILURE;
         }
 
-        std::string filename = argv[optind++];
-
-        std::ifstream file(filename);
+        std::ifstream file(*filename);
         if (!file) {
-            std::cerr << argv[0] << ": file " << quote(filename) << " not readable" << std::endl;
+            std::cerr << argv[0] << ": " << "file " << std::quoted(*filename) << " not readable" << std::endl;
             return EXIT_FAILURE;
         }
 
         printTopN(file, std::cout, start_timestamp, end_timestamp, n);
-    } else if (command == "distinct") {
-        if (optind >= argc) {
+    } else if (command == PrintDistinctCommand) {
+        auto filename = positionalArguments.next();
+        if (!filename) {
             std::cerr << argv[0] << ": " << "no filename given" << std::endl;
             return EXIT_FAILURE;
         }
 
-        std::string filename = argv[optind++];
-
-        std::ifstream file(filename);
+        std::ifstream file(*filename);
         if (!file) {
-            std::cerr << argv[0] << ": file " << quote(filename) << " not readable" << std::endl;
+            std::cerr << argv[0] << ": " << "file " << std::quoted(*filename) << " not readable" << std::endl;
             return EXIT_FAILURE;
         }
 
         printDistinctCount(file, std::cout, start_timestamp, end_timestamp);
     } else {
-        std::cerr << argv[0] << ": unrecognized command " << quote(command) << std::endl;
+        std::cerr << argv[0] << ": unrecognized command " << std::quoted(*command) << std::endl;
         return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
 }
-
