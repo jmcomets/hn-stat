@@ -60,7 +60,7 @@ void printTopN(std::istream& input, std::ostream& output, Timestamp start_timest
     if (n == 0)
         return;
 
-    MaxOccurrenceRanker<std::string, std::string_view> ranker(n);
+    MaxOccurrenceRanker<std::string, std::string_view> ranker;
 
     // rank queries in the given timestamp range
     onTimestampRange(input, start_timestamp, end_timestamp, [&ranker](std::string_view query) {
@@ -68,9 +68,11 @@ void printTopN(std::istream& input, std::ostream& output, Timestamp start_timest
     });
 
     // print out the top n elements
-    ranker.visit([&output](std::string_view query, unsigned int count) {
+    for (const auto& p : ranker.top(n)) {
+        std::string_view query = p.first;
+        unsigned int count = p.second;
         output << query << ' ' << count << '\n';
-    });
+    }
     output.flush();
 }
 
