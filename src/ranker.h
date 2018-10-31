@@ -2,7 +2,6 @@
 
 #include <type_traits>
 #include <unordered_map>
-#include <map>
 
 template <typename Owned, typename Ref = const Owned&>
 class MaxOccurrenceRanker
@@ -13,52 +12,31 @@ class MaxOccurrenceRanker
 public:
     typedef unsigned int Count;
 
-    //! Construct a ranker with the number of highest occurring elements to track.
-    explicit MaxOccurrenceRanker(Count n):
-        n_(n)
-    {
-    }
-
-    //! Add a new element to the ranker, incrementing its rank,
-    //! potentially including it in the `n` elements of highest rank.
+    //! Add a new element to the ranker.
     void update(Ref element)
     {
         auto insertIt = occurrences_.emplace(element, 0).first;
-        const Owned& insertedElement = insertIt->first;
-        Count count = ++insertIt->second;
-
-        // erase an existing entry for this element
-        for (auto range = rankedOccurrences_.equal_range(count-1); range.first != range.second; ++range.first) {
-            if (range.first->second == element) {
-                rankedOccurrences_.erase(range.first);
-                break;
-            }
-        }
-
-        if (rankedOccurrences_.size() == n_) {
-            Count smallestCount = rankedOccurrences_.rbegin()->first;
-            if (count > smallestCount) {
-                rankedOccurrences_.emplace(count, insertedElement);
-
-                // only keep the n max occurrences
-                rankedOccurrences_.erase(smallestCount);
-            }
-        } else {
-            rankedOccurrences_.emplace(count, insertedElement);
-        }
+        ++insertIt->second;
     }
 
-    //! Visit the `n` elements of highest rank.
-    template <typename F>
-    void visit(F f) const
+    //! Get the `n` elements of highest rank.
+    std::vector<std::pair<Ref, Count>> top(Count n) const
     {
-        for (const std::pair<Count, Ref>& p : rankedOccurrences_) {
-            f(p.second, p.first);
+        std::vector<std::pair<Ref, Count>> topN;
+        topN.reserve(n);
+        for (const std::pair<Owned, Count>& p : occurrences_) {
+            std::pair<Ref, Count> item(p.first, p.second);
+            auto insertIt = std::upper_bound(topN.begin(), topN.end(), item,
+                                             [](const std::pair<Ref, Count>& p1, const std::pair<Ref, Count>& p2) {
+                                                return p1.second > p2.second;
+                                             });
+            topN.insert(insertIt, item);
+            if (topN.size() > n)
+                topN.pop_back();
         }
+        return topN;
     }
 
 private:
-    Count n_;
     std::unordered_map<Owned, Count> occurrences_;
-    std::multimap<Count, Ref, std::greater<Count>> rankedOccurrences_;
 };
